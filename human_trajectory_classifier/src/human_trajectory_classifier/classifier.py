@@ -348,8 +348,8 @@ def get_tpr_tnr(classifier, ratio):
             tnr_ab[k] = temp_tnr
 
             fo = open("tpr_tnr_data", "a")
-            fo.write(str(k)+"_"+str(alpha)+"_"+str(beta)+" tpr: "+temp_tpr)
-            fo.write(str(k)+"_"+str(alpha)+"_"+str(beta)+" tnr: "+temp_tnr)
+            fo.write(str(k)+"_"+str(alpha)+"_"+str(beta)+" tpr: "+str(temp_tpr))
+            fo.write(str(k)+"_"+str(alpha)+"_"+str(beta)+" tnr: "+str(temp_tnr))
             fo.close()
         alpha -= 0.5
         beta += 0.5
