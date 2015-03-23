@@ -1,6 +1,9 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*pyc
+*swo
+*.swp
 
 # C extensions
 *.so
@@ -21,6 +24,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.ropeproject/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
