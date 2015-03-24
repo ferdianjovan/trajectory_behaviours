@@ -323,9 +323,9 @@ def get_tpr_tnr(classifier, ratio):
     tnr = dict()
     classifier.split_training_data(ratio)
     k = 5
-    alpha = 1.0
-    beta = 0.0
-    while alpha > 0.0:
+    alpha = 0.0
+    beta = 1.0
+    while alpha >= 0.0:
         tpr_ab = dict()
         tnr_ab = dict()
         while k < 12:
@@ -334,6 +334,7 @@ def get_tpr_tnr(classifier, ratio):
             classifier.k = k
             for i, t in enumerate(classifier.test_data):
                 prediction = classifier.predict_class_data(t[0])
+                rospy.loginfo("The actual class is %s", t[1])
                 if prediction[0] == 'human' and t[1] == 'human':
                     tp += 1
                 elif prediction[0] == 'human' and t[1] == 'non-human':
@@ -348,8 +349,12 @@ def get_tpr_tnr(classifier, ratio):
             tnr_ab[k] = temp_tnr
 
             fo = open("tpr_tnr_data", "a")
-            fo.write(str(k)+"_"+str(alpha)+"_"+str(beta)+" tpr: "+str(temp_tpr))
-            fo.write(str(k)+"_"+str(alpha)+"_"+str(beta)+" tnr: "+str(temp_tnr))
+            fo.write(
+                str(k)+"_"+str(alpha)+"_"+str(beta)+" tpr: "+str(temp_tpr)+"\n"
+            )
+            fo.write(
+                str(k)+"_"+str(alpha)+"_"+str(beta)+" tnr: "+str(temp_tnr)+"\n"
+            )
             fo.close()
         alpha -= 0.5
         beta += 0.5
