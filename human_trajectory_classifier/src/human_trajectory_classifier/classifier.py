@@ -278,91 +278,69 @@ class KNNClassifier(object):
                 trajs[uuid].append_pose(human_pose, header, robot_pose)
         return trajs
 
-    # create a visualisation graph in cartesian coordinate
-    def visualize_test_between_class(self, test, human, non_human):
-        fig = plt.figure("Trajectories for Test, Human, and Non-Human")
-        ax = SubplotZero(fig, 111)
-        fig.add_subplot(ax)
-        line_style = ['r.-', 'gx-', 'bo-']
 
-        # plotting test data
-        x = [i.pose.position.x for i in test]
-        y = [i.pose.position.y for i in test]
-        ax.plot(x, y, line_style[0], label="Test")
-        # plotting human data
-        x = [i.pose.position.x for i in human]
-        y = [i.pose.position.y for i in human]
-        ax.plot(x, y, line_style[1], label="Human")
-        # plotting non-human data
-        x = [i.pose.position.x for i in non_human]
-        y = [i.pose.position.y for i in non_human]
-        ax.plot(x, y, line_style[2], label="Non-human")
+# create a visualisation graph in cartesian coordinate between test data,
+# one of the nearest training data (human), and training data (non_human)
+def visualize_test_between_class(test, human, non_human):
+    fig = plt.figure("Trajectories for Test, Human, and Non-Human")
+    ax = SubplotZero(fig, 111)
+    fig.add_subplot(ax)
+    line_style = ['r.-', 'gx-', 'bo-']
 
-        ax.margins(0.05)
-        ax.legend(loc="lower right", fontsize=10)
-        plt.title("Chunks of Trajectories")
-        plt.xlabel("Axis")
-        plt.ylabel("Ordinate")
+    # plotting test data
+    x = [i.pose.position.x for i in test]
+    y = [i.pose.position.y for i in test]
+    ax.plot(x, y, line_style[0], label="Test")
+    # plotting human data
+    x = [i.pose.position.x for i in human]
+    y = [i.pose.position.y for i in human]
+    ax.plot(x, y, line_style[1], label="Human")
+    # plotting non-human data
+    x = [i.pose.position.x for i in non_human]
+    y = [i.pose.position.y for i in non_human]
+    ax.plot(x, y, line_style[2], label="Non-human")
 
-        for direction in ["xzero", "yzero"]:
-            ax.axis[direction].set_axisline_style("-|>")
-            ax.axis[direction].set_visible(True)
+    ax.margins(0.05)
+    ax.legend(loc="lower right", fontsize=10)
+    plt.title("Chunks of Trajectories")
+    plt.xlabel("Axis")
+    plt.ylabel("Ordinate")
 
-        for direction in ["left", "right", "bottom", "top"]:
-            ax.axis[direction].set_visible(False)
+    for direction in ["xzero", "yzero"]:
+        ax.axis[direction].set_axisline_style("-|>")
+        ax.axis[direction].set_visible(True)
 
-        pylab.grid()
-        plt.show()
+    for direction in ["left", "right", "bottom", "top"]:
+        ax.axis[direction].set_visible(False)
+
+    pylab.grid()
+    plt.show()
 
 
 # getting True Positive Rate and True Negative Rate from different
 # configurations (variation of k, alpha, and beta) from classifier
-def get_tpr_tnr(classifier, ratio):
-    rospy.loginfo("Constructing roc curve...")
-    tpr = dict()
-    tnr = dict()
-    classifier.split_training_data(ratio)
-    k = 5
-    alpha = 0.0
-    beta = 1.0
-    while alpha >= 0.0:
-        tpr_ab = dict()
-        tnr_ab = dict()
-        while k < 12:
-            k += 2
-            tp = fn = fp = tn = 0
-            classifier.k = k
-            for i, t in enumerate(classifier.test_data):
-                prediction = classifier.predict_class_data(t[0])
-                rospy.loginfo("The actual class is %s", t[1])
-                if prediction[0] == 'human' and t[1] == 'human':
-                    tp += 1
-                elif prediction[0] == 'human' and t[1] == 'non-human':
-                    fp += 1
-                elif prediction[0] == 'non-human' and t[1] == 'non-human':
-                    tn += 1
-                else:
-                    fn += 1
-            temp_tpr = tp / float(tp + fn)
-            temp_tnr = tn / float(fp + tn)
-            tpr_ab[k] = temp_tpr
-            tnr_ab[k] = temp_tnr
+def get_tpr_tnr(classifier, k, alpha, beta):
+    rospy.loginfo("Constructing tpr, tnr...")
+    tp = fn = fp = tn = 0
+    classifier.k = k
+    classifier.alpha = alpha
+    classifier.beta = beta
 
-            fo = open("tpr_tnr_data", "a")
-            fo.write(
-                str(k)+"_"+str(alpha)+"_"+str(beta)+" tpr: "+str(temp_tpr)+"\n"
-            )
-            fo.write(
-                str(k)+"_"+str(alpha)+"_"+str(beta)+" tnr: "+str(temp_tnr)+"\n"
-            )
-            fo.close()
-        alpha -= 0.5
-        beta += 0.5
-        tpr[str(alpha)+"_"+str(beta)] = tpr_ab
-        tnr[str(alpha)+"_"+str(beta)] = tnr_ab
-
-    print "tpr: " + str(tpr)
-    print "tnr: " + str(tnr)
+    for i, t in enumerate(classifier.test_data):
+        prediction = classifier.predict_class_data(t[0])
+        rospy.loginfo("The actual class is %s", t[1])
+        if prediction[0] == 'human' and t[1] == 'human':
+            tp += 1
+        elif prediction[0] == 'human' and t[1] == 'non-human':
+            fp += 1
+        elif prediction[0] == 'non-human' and t[1] == 'non-human':
+            tn += 1
+        else:
+            fn += 1
+    tpr = tp / float(tp + fn)
+    tnr = tn / float(fp + tn)
+    print "TPR: %0.5f, TNR: %0.5f" % (tpr, tnr)
+    return (tpr, tnr)
 
 
 if __name__ == '__main__':
@@ -370,28 +348,44 @@ if __name__ == '__main__':
 
     if len(sys.argv) < 3:
         rospy.logerr(
-            "usage: predictor train_ratio accuracy[1/0]"
+            "usage: predictor train_ratio [roc|score|test_graph]"
         )
         sys.exit(2)
 
     lsp = KNNClassifier()
     lsp.update_database()
 
-    if int(sys.argv[2]):
+    if sys.argv[2] == 'score':
         rospy.loginfo("The overall accuracy is " + str(lsp.get_accuracy()))
+    elif sys.argv[2] == 'roc':
+        lsp.split_training_data(float(sys.argv[1]))
+        alpha = [0.0, 0.5, 1.0]
+        beta = [1.0, 0.5, 0.0]
+        # K = [5, 7, 9, 11]
+        K = [5, 7]
+        tpr = list()
+        tnr = list()
+
+        for i in range(len(alpha)):
+            for k in K:
+                print "K: %d, alpha: %0.2f, beta: %0.2f" % (k, alpha[i], beta[i])
+                temp = get_tpr_tnr(lsp, k, alpha[i], beta[i])
+                tpr.append(temp[0])
+                tnr.append(temp[1])
+        print str([round(i, 5) for i in tpr])
+        print str([round(i, 5) for i in tnr])
     else:
-        get_tpr_tnr(lsp, float(sys.argv[1]))
-        # lsp.split_training_data(float(sys.argv[1]))
-        # human_data = None
-        # while not rospy.is_shutdown():
-        # human_data = lsp.test_data[
-        #     random.randint(0, len(lsp.test_data)-1)
-        # ]
-        #     prediction = lsp.predict_class_data(human_data[0])
-        #     rospy.loginfo("The actual class is %s", human_data[1])
-        #     if len(prediction[1]) != 0 and len(prediction[2]) != 0:
-        #         lsp.visualize_test_between_class(
-        #             human_data[0].normal,
-        #             prediction[1][0][0].normal,
-        #             prediction[2][0][0].normal
-        #         )
+        lsp.split_training_data(float(sys.argv[1]))
+        human_data = None
+        while not rospy.is_shutdown():
+            human_data = lsp.test_data[
+                random.randint(0, len(lsp.test_data)-1)
+            ]
+            prediction = lsp.predict_class_data(human_data[0])
+            rospy.loginfo("The actual class is %s", human_data[1])
+            if len(prediction[1]) != 0 and len(prediction[2]) != 0:
+                lsp.visualize_test_between_class(
+                    human_data[0].normal,
+                    prediction[1][0][0].normal,
+                    prediction[2][0][0].normal
+                )
