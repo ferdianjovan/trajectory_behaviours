@@ -344,7 +344,7 @@ def get_tpr_tnr(classifier, k, alpha, beta):
 
 
 if __name__ == '__main__':
-    rospy.init_node("labeled_short_poses")
+    rospy.init_node("knn_trajectory_classifier")
 
     if len(sys.argv) < 3:
         rospy.logerr(
@@ -361,8 +361,7 @@ if __name__ == '__main__':
         lsp.split_training_data(float(sys.argv[1]))
         alpha = [0.0, 0.5, 1.0]
         beta = [1.0, 0.5, 0.0]
-        # K = [5, 7, 9, 11]
-        K = [5, 7]
+        K = [5, 7, 9, 11]
         tpr = list()
         tnr = list()
 

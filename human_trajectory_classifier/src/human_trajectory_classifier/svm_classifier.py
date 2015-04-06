@@ -25,32 +25,68 @@ class SVCClassifier(object):
         self.label_train = list()
         self.label_test = list()
 
+    def get_tpr_tnr(self):
+        rospy.loginfo("Constructing tpr, tnr...")
+        all_tpr = dict()
+        all_tnr = dict()
+        # calculate accuracy of all combination of C and gamma
+        for i in [0.1, 1, 10, 100, 1000]:
+            temp = dict()
+            temp2 = dict()
+            for j in [0.01, 0.1, 1, 10, 100]:
+                self.svm = SVM.SVC(cache_size=2000, C=i, gamma=j)
+                self._fitting_classifier()
+                tp = 0
+                fp = 0
+                tn = 0
+                fn = 0
+                for k, v in enumerate(self.test):
+                    prediction = self.predict_class_data(v)
+                    if prediction[-1] == 1 and self.label_test[k] == 1:
+                        tp += 1
+                    elif prediction[-1] == 1 and self.label_test[k] == 0:
+                        fp += 1
+                    elif prediction[-1] == 0 and self.label_test[k] == 0:
+                        tn += 1
+                    else:
+                        fn += 1
+                tpr = tp / float(tp + fn)
+                tnr = tn / float(fp + tn)
+                print "C: %0.1f, Gamma:%0.2f, TPR: %0.5f, TNR: %0.5f" % (i, j, tpr, tnr)
+                temp[j] = tpr
+                temp2[j] = tnr
+            all_tpr[i] = temp
+            all_tnr[i] = temp2
+
+        return all_tpr, all_tnr
+
     # produce roc curve by varying C and gamma
     def get_roc_curve(self):
         mean_tpr = 0.0
         mean_fpr = np.linspace(0, 1, 100)
-        all_tpr = []
         # calculate accuracy of all combination of C and gamma
-        for i in [0.1, 1, 10, 100, 1000, 1000]:
-            for j in [0.001, 0.01, 0.1, 1, 10, 100]:
-                self.svm = SVM.SVC(cache_size=1000, C=i, gamma=j)
+        for i in [0.1, 1, 10, 100, 1000]:
+            for j in [0.01, 0.1, 1, 10, 100]:
+                self.svm = SVM.SVC(cache_size=2000, C=i, gamma=j)
                 self._fitting_classifier(True)
                 # predict with probability, to be fed to roc_curve
                 prediction = self.svm.predict_proba(self.test)
-                fpr, tpr, threshold = roc_curve(self.label_test, prediction[:,1])
+                fpr, tpr, threshold = roc_curve(
+                    self.label_test, prediction[:, 1]
+                )
                 mean_tpr += interp(mean_fpr, fpr, tpr)
                 mean_tpr[0] = 0.0
                 roc_auc = auc(fpr, tpr)
                 # plot the result
                 plt.plot(
                     fpr, tpr, lw=1,
-                    label='ROC C=%0.2f, Gamma=%0.3f (area = %0.2f)' % (
+                    label='C=%0.2f, Gamma=%0.3f (area = %0.2f)' % (
                         i, j, roc_auc
                     )
                 )
 
         # calculate the average roc value
-        mean_tpr /= 36
+        mean_tpr /= 25
         mean_tpr[-1] = 1.0
         mean_auc = auc(mean_fpr, mean_tpr)
         plt.plot(
@@ -77,7 +113,6 @@ class SVCClassifier(object):
 
     # predict the class of the test data
     def predict_class_data(self, test):
-        rospy.loginfo("Predicting %s...", str(test[0]))
         return self.svm.predict(test)
 
     # get the mean accuracy of the classifier
@@ -101,7 +136,7 @@ class SVCClassifier(object):
         rospy.loginfo("Splitting data into test and training...")
         (a, b, c, d) = cross_validation.train_test_split(
             self.training, self.label_train,
-            test_size=(1-training_ratio), random_state=0
+            train_size=training_ratio, random_state=0
         )
         self.training = a
         self.test = b
@@ -220,11 +255,11 @@ class SVCClassifier(object):
 
 
 if __name__ == '__main__':
-    rospy.init_node("human_trajectory_svmclassifier")
+    rospy.init_node("svm_trajectory_classifier")
 
     if len(sys.argv) < 3:
         rospy.logerr(
-            "usage: classifier train_ratio accuracy[1]/roc[0]"
+            "usage: classifier train_ratio [score | roc]"
         )
         sys.exit(2)
 
@@ -232,7 +267,7 @@ if __name__ == '__main__':
     svmc.update_database()
     svmc.split_training_data(float(sys.argv[1]))
 
-    if int(sys.argv[2]):
+    if sys.argv[2] == 'score':
         rospy.loginfo("The overall accuracy is " + str(svmc.get_accuracy()))
     else:
         svmc.get_roc_curve()
