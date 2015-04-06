@@ -116,9 +116,13 @@ class SVCClassifier(object):
         return self.svm.predict(test)
 
     # get the mean accuracy of the classifier
-    def get_accuracy(self):
+    def get_accuracy(self, queue=None):
+        preempt = False
         rospy.loginfo("Getting the accuracy...")
-        self.accuracy = self.svm.score(self.test, self.label_test)
+        if queue is not None and not queue.empty():
+            preempt = queue.get()['preempt']
+        if not preempt:
+            self.accuracy = self.svm.score(self.test, self.label_test)
         return self.accuracy
 
     # update training and test data from database
