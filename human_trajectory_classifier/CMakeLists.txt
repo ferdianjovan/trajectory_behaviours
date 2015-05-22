@@ -20,12 +20,12 @@ catkin_python_setup()
 
 add_message_files(
     DIRECTORY msg
-    FILES HumanIdentifier.msg
+    FILES HumanTrajectoryClassification.msg
 )
 
 add_action_files(
     DIRECTORY action
-    FILES HMC.action
+    FILES TrajectoryClassification.action
 )
 
 generate_messages(
