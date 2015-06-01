@@ -1,0 +1,14 @@
+<launch>
+    <arg name="classifier" default="svm"/>      <!--svm or sssvm-->
+    <arg name="data_path" default=""/>          <!--$(find human_trajectory_classifier)/data/train.data-->
+
+    <arg name="machine" default="localhost" />
+    <arg name="user" default="" />
+
+    <machine name="$(arg machine)" address="$(arg machine)" env-loader="$(optenv ROS_ENV_LOADER )" user="$(arg user)" default="true"/>
+
+    <node pkg="human_trajectory_classifier" type="trajectory_classifier.py" name="human_trajectory_classifier_server" output="screen" respawn="false">
+        <param name="classifier" value="$(arg classifier)" type="string"/>
+        <param name="data_path" value="$(arg data_path)" type="string"/>
+    </node>
+</launch>

@@ -8,7 +8,7 @@ from human_trajectory_classifier.msg import TrajectoryClassificationGoal
 
 def test():
     client = actionlib.SimpleActionClient(
-        "human_trajectory_classification_server", TrajectoryClassificationAction
+        "human_trajectory_classifier_server", TrajectoryClassificationAction
     )
     rospy.loginfo("waiting for server...")
     client.wait_for_server()

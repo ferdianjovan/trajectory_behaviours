@@ -14,72 +14,72 @@ from human_trajectory_classifier.trajectory_data import LabeledTrajectory
 
 class SVMClassifier(object):
 
-    def __init__(self, trajs):
+    def __init__(self):
         self.accuracy = -1.0
+        self.C = 0.1
         self.svm = SVM.SVC(cache_size=1000, C=0.1, gamma=10)
-        self.no_model = False
-        self.load_trained_model(trajs)
+        self.no_current_model = False
+        self.load_trained_model()
 
     # loading the trained model if there is one
-    def load_trained_model(self, trajs):
-        self.no_model = False
+    def load_trained_model(self):
         try:
             self.svm = joblib.load(
                 "/home/%s/STRANDS/trajectory_classifier.pkl" % getpass.getuser()
             )
-            rospy.loginfo("Using trained model...")
+            rospy.loginfo("Using trained model trajectory_classifier.pkl...")
+            self.no_current_model = False
         except:
-            if not(0 in trajs.label_train and 1 in trajs.label_train):
-            # if len(trajs.training) == 0:
-                rospy.logwarn("No model for this classifier, please provide training data")
-                self.no_model = True
-            else:
-                self.update_model(trajs)
+            rospy.loginfo("No trained model found...")
+            self.no_current_model = True
 
     # updating model
-    def update_model(self, trajs):
+    def update_model(self, training, label_train):
         rospy.loginfo("Building a new trained model...")
-        self._fit(trajs)
-        joblib.dump(
-            self.svm, "/home/%s/STRANDS/trajectory_classifier.pkl" % getpass.getuser()
-        )
+        if not(0 in label_train and 1 in label_train):
+            rospy.logwarn("Training data only contains one class. Skipping learning...")
+            self.no_current_model = True
+        else:
+            self._fit(training, label_train)
+            joblib.dump(
+                self.svm, "/home/%s/STRANDS/trajectory_classifier.pkl" % getpass.getuser()
+            )
+            self.no_current_model = False
 
     # fitting the training data with label and print the result
-    def _fit(self, trajs, probability=False):
+    def _fit(self, training, label_train, probability=False):
         rospy.loginfo("Fitting the training data...")
         self.svm.probability = probability
-        print self.svm.fit(trajs.training, trajs.label_train)
+        print self.svm.fit(training, label_train)
 
     # predict the class of the test data
     def predict_class_data(self, test):
-        if self.no_model:
+        if self.no_current_model:
             rospy.logwarn("No model for this classifier, please provide training data")
             return None
         else:
             return self.svm.predict(test)
 
     # get the mean accuracy of the classifier
-    def calculate_accuracy(self, trajs):
+    def calculate_accuracy(self, test, label_test):
         rospy.loginfo("Getting the accuracy...")
-        trajs.split_training_data()
-        self._fit(trajs)
-        self.accuracy = self.svm.score(trajs.test, trajs.label_test) * 100
+        self.accuracy = self.svm.score(test, label_test) * 100
         rospy.loginfo("Accuracy is " + str(self.accuracy))
-        self.load_trained_model(trajs)
 
     # get tpr and tnr of several models (different gamma, and C parameters)
     def get_tpr_tnr(self, trajs):
         rospy.loginfo("Constructing tpr, tnr...")
         all_tpr = dict()
         all_tnr = dict()
-        trajs.split_training_data()
+        if len(trajs.test) == 0:
+            trajs.split_training_data()
         # calculate accuracy of all combination of C and gamma
         for i in [0.1, 1, 10, 100, 1000]:
             temp = dict()
             temp2 = dict()
             for j in [0.01, 0.1, 1, 10, 100]:
                 self.svm = SVM.SVC(cache_size=2000, C=i, gamma=j)
-                self._fit(trajs)
+                self._fit(trajs.training, trajs.label_train)
                 tp = 0
                 fp = 0
                 tn = 0
@@ -108,13 +108,14 @@ class SVMClassifier(object):
     def get_roc_curve(self, trajs):
         mean_tpr = 0.0
         mean_fpr = np.linspace(0, 1, 100)
-        trajs.split_training_data()
+        if len(trajs.test) == 0:
+            trajs.split_training_data()
 
         # calculate accuracy of all combination of C and gamma
         for i in [0.1, 1, 10, 100, 1000]:
             for j in [0.01, 0.1, 1, 10, 100]:
                 self.svm = SVM.SVC(cache_size=2000, C=i, gamma=j)
-                self._fit(trajs, True)
+                self._fit(trajs.training, trajs.label_train, True)
                 # predict with probability, to be fed to roc_curve
                 prediction = self.svm.predict_proba(trajs.test)
                 fpr, tpr, threshold = roc_curve(
@@ -152,14 +153,11 @@ class SVMClassifier(object):
 if __name__ == '__main__':
     rospy.init_node("svm_trajectory_classifier")
 
-    if len(sys.argv) < 2:
-        rospy.logerr(
-            "usage: classifier train_ratio"
-        )
-        sys.exit(2)
-
-    trajs = LabeledTrajectory()
-    svmc = SVMClassifier(trajs)
-    svmc.update_model(trajs)
-    svmc.calculate_accuracy(trajs)
-    rospy.loginfo("The overall accuracy is " + str(svmc.accuracy))
+    trajs = LabeledTrajectory(update=False)
+    trajs.get_data_from_file("/home/%s/test.data" % getpass.getuser())
+    trajs.update_database()
+    trajs.split_training_data()
+    svmc = SVMClassifier()
+    if svmc.no_current_model:
+        svmc.update_model(trajs.training, trajs.label_train)
+    svmc.calculate_accuracy(trajs.test, trajs.label_test)

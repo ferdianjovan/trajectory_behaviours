@@ -6,6 +6,7 @@ from std_msgs.msg import Header
 from human_trajectory.trajectory import Trajectory
 from human_trajectory.msg import Trajectories
 from human_trajectory_classifier.svmc import SVMClassifier
+from human_trajectory_classifier.sssvm import TripleSVMClassifier
 from human_trajectory_classifier.msg import TrajectoryClassificationAction
 from human_trajectory_classifier.msg import TrajectoryClassificationResult
 from human_trajectory_classifier.msg import HumanTrajectoryClassification
@@ -14,12 +15,17 @@ from human_trajectory_classifier.trajectory_data import LabeledTrajectory
 
 class TrajectoryClassifierServer(object):
 
-    def __init__(self, name):
+    def __init__(self, name, path='', classifier='svm'):
         self.seq = 1
         self._action_name = name
+        self.file_path = path
+        self.classifier_type = classifier
         self.label_trajs = LabeledTrajectory(update=False)
-        self.classifier = SVMClassifier(self.label_trajs)
-        if self.classifier.no_model:
+        if classifier == 'svm' or path == '':
+            self.classifier = SVMClassifier()
+        else:
+            self.classifier = TripleSVMClassifier()
+        if self.classifier.no_current_model:
             self.update_classifier_model()
         self.trajs = dict()
         self.filtered_uuid = dict()
@@ -52,12 +58,13 @@ class TrajectoryClassifierServer(object):
                 traj.sequence_id = i.sequence_id
                 self.trajs.update({i.uuid: traj})
 
-        temp = {i.uuid: True for i in msg.trajectories}
+        temp = [i.uuid for i in msg.trajectories]
         for uuid in self.trajs.keys():
             if uuid not in temp:
                 del self.trajs[uuid]
 
-    def _svm_prediction(self, trajs):
+    # predicting human trajectory type
+    def _prediction(self, trajs):
         for i in trajs.values():
             human_counter = 0
             if len(i.humrobpose) >= 5 * 20:
@@ -86,6 +93,8 @@ class TrajectoryClassifierServer(object):
                     )
         self._publish()
 
+    # publishing human trajectory type using HumanTrajectoryClassification
+    # message
     def _publish(self):
         if len(self.filtered_uuid) == 0:
             header = Header(self.seq, rospy.Time.now(), '')
@@ -110,7 +119,7 @@ class TrajectoryClassifierServer(object):
                 del self.filtered_uuid[k]
 
     def get_online_prediction(self):
-        if self.classifier.no_model:
+        if self.classifier.no_current_model:
             rospy.logwarn("No model for the classifier")
             self._as.set_aborted()
             return
@@ -126,19 +135,25 @@ class TrajectoryClassifierServer(object):
 
         while not self._as.is_preempt_requested():
             trajs = self.trajs
-            self._svm_prediction(trajs)
+            self._prediction(trajs)
         self._as.set_preempted()
         s.unregister()
 
     # update classifier database
     def update_classifier_model(self):
         rospy.loginfo("%s is updating database", self._action_name)
+        if self.classifier_type != 'svm' and self.file_path != '':
+            self.label_trajs.get_data_from_file(self.file_path)
         self.label_trajs.update_database()
-        if 0 in self.label_trajs.label_train and 1 in self.label_trajs.label_train:
-            self.classifier.update_model(self.label_trajs)
-            self.classifier.no_model = False
+        self.label_trajs.split_training_data(training_ratio=0.9)
+        if self.classifier_type != 'svm' and self.file_path != '':
+            self.classifier.update_model(
+                self.label_trajs.training,
+                self.label_trajs.label_train,
+                self.label_trajs.unlabel
+            )
         else:
-            rospy.loginfo("Trajectory data is not enough for learning, skipping learning classifier model")
+            self.classifier.update_model(self.label_trajs.training, self.label_trajs.label_train)
         rospy.loginfo("%s is ready", self._action_name)
 
     def calculate_accuracy(self):
@@ -150,12 +165,13 @@ class TrajectoryClassifierServer(object):
                 rospy.loginfo("No reference data test and training, updating data...")
                 self.update_classifier_model()
             if 0 in self.label_trajs.label_train and 1 in self.label_trajs.label_train:
-                self.classifier.calculate_accuracy(self.label_trajs)
+                self.classifier.calculate_accuracy(
+                    self.label_trajs.test, self.label_trajs.label_test
+                )
                 self._as.set_succeeded(TrajectoryClassificationResult(True))
             else:
-                rospy.loginfo("Still no reference data test and training. Aborting calculation...")
+                rospy.loginfo("Still no reference test and training. Aborting calculation...")
                 self._as.set_aborted()
-
 
     # execute call back for action server
     def execute(self, goal):
@@ -169,6 +185,8 @@ class TrajectoryClassifierServer(object):
 
 
 if __name__ == '__main__':
-    rospy.init_node("human_trajectory_classification_server")
-    sv = TrajectoryClassifierServer(rospy.get_name())
+    rospy.init_node("human_trajectory_classifier_server")
+    classifier = rospy.get_param("~classifier", "svm")
+    path = rospy.get_param("~data_path", "")
+    sv = TrajectoryClassifierServer(rospy.get_name(), path, classifier)
     rospy.spin()

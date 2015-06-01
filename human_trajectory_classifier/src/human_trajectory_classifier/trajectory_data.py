@@ -2,6 +2,7 @@
 
 import rospy
 import math
+import rosparam
 from sklearn import cross_validation
 from human_trajectory.trajectories import OfflineTrajectories
 
@@ -14,17 +15,47 @@ class LabeledTrajectory(object):
         self.test = list()
         self.label_train = list()
         self.label_test = list()
+        self.data_from_file = None
+        self.unlabel = list()
         if update:
             self.update_database()
 
-    # update training and test data from database
+    # get uuid and label (1 for positive class, 0 for negative class)
+    def get_data_from_file(self, path):
+        rospy.loginfo("Obtaining some data from file...")
+        if path == '':
+            rospy.logfatal("File does not exist, please specified the path correctly.")
+            raise rospy.ROSException("Path to a file is wrong.")
+            return
+        self.data_from_file = rosparam.load_file(path)[0][0]
+
+    # update training data from database
     def update_database(self):
         rospy.loginfo("Updating database...")
         self.training = list()
         self.test = list()
         self.label_train = list()
         self.label_test = list()
-        self._label_data(OfflineTrajectories().traj)
+        self.unlabel = list()
+        if self.data_from_file is not None:
+            self._label_data_from_file(OfflineTrajectories().traj)
+        else:
+            self._label_data(OfflineTrajectories().traj)
+
+    # add training data based on data from file
+    def _label_data_from_file(self, trajs):
+        rospy.loginfo("Splitting data into chunks...")
+        for uuid, traj in trajs.iteritems():
+            label = 0
+            chunked_traj = self.create_chunk(list(zip(*traj.humrobpose)[0]))
+            if uuid in self.data_from_file:
+                label = self.data_from_file[uuid]
+                for i in chunked_traj:
+                    self.training.append(i)
+                    self.label_train.append(label)
+            else:
+                for i in chunked_traj:
+                    self.unlabel.append(i)
 
     # labeling data
     def _label_data(self, trajs):
@@ -41,7 +72,7 @@ class LabeledTrajectory(object):
                 avg_vel = 0.0
             # distance restriction
             dist = self.maximum_distance(list(zip(*traj.humrobpose)[0]))
-            # labeling
+            # labeling, positive class is 1, negative class is 0
             label = not(
                 traj.length[-1] < 0.1 or avg_vel < 0.5 or avg_vel > 1.5 and dist < 1.0
             )
@@ -121,3 +152,12 @@ class LabeledTrajectory(object):
         self.test = b
         self.label_train = c
         self.label_test = d
+
+
+if __name__ == '__main__':
+    rospy.init_node("labeled_trajectory")
+    lt = LabeledTrajectory(update=False)
+    lt.get_data_from_file("/home/fxj345/test.data")
+    lt.update_database()
+    lt.split_training_data()
+    print len(lt.training), len(lt.test), len(lt.unlabel)
