@@ -134,7 +134,8 @@ if __name__ == '__main__':
     rospy.init_node("triplesvm_trajectory_classifier")
 
     trajs = LabeledTrajectory(update=False)
-    trajs.get_data_from_file("/home/%s/test.data" % getpass.getuser())
+    # trajs.get_data_from_file("/home/%s/test.data" % getpass.getuser())
+    trajs.get_data_from_mongo()
     trajs.update_database()
     trajs.split_training_data()
     svmc = TripleSVMClassifier()

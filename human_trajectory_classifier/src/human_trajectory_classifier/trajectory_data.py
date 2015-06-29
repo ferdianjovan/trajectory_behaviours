@@ -6,6 +6,9 @@ import rosparam
 from sklearn import cross_validation
 from human_trajectory.trajectories import OfflineTrajectories
 
+from mongodb_store.message_store import MessageStoreProxy
+from human_trajectory_classifier.msg import TrajectoryType
+
 
 class LabeledTrajectory(object):
 
@@ -16,7 +19,9 @@ class LabeledTrajectory(object):
         self.label_train = list()
         self.label_test = list()
         self.data_from_file = None
+        self.data_from_mongo = None
         self.unlabel = list()
+
         if update:
             self.update_database()
 
@@ -28,19 +33,6 @@ class LabeledTrajectory(object):
             raise rospy.ROSException("Path to a file is wrong.")
             return
         self.data_from_file = rosparam.load_file(path)[0][0]
-
-    # update training data from database
-    def update_database(self):
-        rospy.loginfo("Updating database...")
-        self.training = list()
-        self.test = list()
-        self.label_train = list()
-        self.label_test = list()
-        self.unlabel = list()
-        if self.data_from_file is not None:
-            self._label_data_from_file(OfflineTrajectories().traj)
-        else:
-            self._label_data(OfflineTrajectories().traj)
 
     # add training data based on data from file
     def _label_data_from_file(self, trajs):
@@ -56,6 +48,46 @@ class LabeledTrajectory(object):
             else:
                 for i in chunked_traj:
                     self.unlabel.append(i)
+
+    # get uuid and label (1 for positive class, 0 for negative class)
+    # from mongodb
+    def get_data_from_mongo(self):
+        rospy.loginfo("Obtaining data from database...")
+        self.data_from_mongo = dict()
+        traj_types = MessageStoreProxy(collection="trajectory_types").query(
+            TrajectoryType._type
+        )
+        for i in traj_types:
+            self.data_from_mongo[i[0].uuid] = i[0].trajectory_type
+
+    # add training data based on data from file
+    def _label_data_from_mongo(self, trajs):
+        rospy.loginfo("Splitting data into chunks...")
+        for uuid, traj in trajs.iteritems():
+            label = 0
+            chunked_traj = self.create_chunk(list(zip(*traj.humrobpose)[0]))
+            if uuid in self.data_from_mongo:
+                if self.data_from_mongo[uuid] == 'human':
+                    label = 1
+                for i in chunked_traj:
+                    self.training.append(i)
+                    self.label_train.append(label)
+            else:
+                for i in chunked_traj:
+                    self.unlabel.append(i)
+
+    # update training data from database
+    def update_database(self):
+        rospy.loginfo("Updating database...")
+        self.training = list()
+        self.test = list()
+        self.label_train = list()
+        self.label_test = list()
+        self.unlabel = list()
+        if self.data_from_mongo is not None:
+            self._label_data_from_mongo(OfflineTrajectories().traj)
+        else:
+            self._label_data(OfflineTrajectories().traj)
 
     # labeling data
     def _label_data(self, trajs):
@@ -157,7 +189,8 @@ class LabeledTrajectory(object):
 if __name__ == '__main__':
     rospy.init_node("labeled_trajectory")
     lt = LabeledTrajectory(update=False)
-    lt.get_data_from_file("/home/fxj345/test.data")
+    # lt.get_data_from_file("/home/fxj345/test.data")
+    lt.get_data_from_mongo()
     lt.update_database()
     lt.split_training_data()
-    print len(lt.training), len(lt.test), len(lt.unlabel)
+    print len(lt.label_train), len(lt.label_test)

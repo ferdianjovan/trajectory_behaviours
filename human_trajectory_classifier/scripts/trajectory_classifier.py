@@ -15,13 +15,12 @@ from human_trajectory_classifier.trajectory_data import LabeledTrajectory
 
 class TrajectoryClassifierServer(object):
 
-    def __init__(self, name, path='', classifier='svm'):
+    def __init__(self, name, classifier='svm'):
         self.seq = 1
         self._action_name = name
-        self.file_path = path
         self.classifier_type = classifier
         self.label_trajs = LabeledTrajectory(update=False)
-        if classifier == 'svm' or path == '':
+        if classifier == 'svm':
             self.classifier = SVMClassifier()
         else:
             self.classifier = TripleSVMClassifier()
@@ -142,11 +141,11 @@ class TrajectoryClassifierServer(object):
     # update classifier database
     def update_classifier_model(self):
         rospy.loginfo("%s is updating database", self._action_name)
-        if self.classifier_type != 'svm' and self.file_path != '':
-            self.label_trajs.get_data_from_file(self.file_path)
+        if self.classifier_type != 'svm':
+            self.label_trajs.get_data_from_mongo()
         self.label_trajs.update_database()
         self.label_trajs.split_training_data(training_ratio=0.9)
-        if self.classifier_type != 'svm' and self.file_path != '':
+        if self.classifier_type != 'svm':
             self.classifier.update_model(
                 self.label_trajs.training,
                 self.label_trajs.label_train,
@@ -187,6 +186,5 @@ class TrajectoryClassifierServer(object):
 if __name__ == '__main__':
     rospy.init_node("human_trajectory_classifier_server")
     classifier = rospy.get_param("~classifier", "svm")
-    path = rospy.get_param("~data_path", "")
-    sv = TrajectoryClassifierServer(rospy.get_name(), path, classifier)
+    sv = TrajectoryClassifierServer(rospy.get_name(), classifier)
     rospy.spin()
