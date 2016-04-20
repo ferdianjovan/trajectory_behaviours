@@ -1,0 +1,18 @@
+<launch>
+    <arg name="soma_map"/>
+    <arg name="soma_config"/>
+    <arg name="minute_increment" default="1"/>
+    <arg name="time_window" default="10"/>
+
+    <arg name="machine" default="localhost" />
+    <arg name="user" default="" />
+
+    <machine name="$(arg machine)" address="$(arg machine)" env-loader="$(optenv ROS_ENV_LOADER )" user="$(arg user)" default="true"/>
+
+    <node pkg="occurrence_learning" type="tof_manager.py" name="TrajectoryArrivalRate" output="screen" respawn="true">
+        <param name="soma_map" value="$(arg soma_map)" type="string"/>
+        <param name="soma_config" value="$(arg soma_config)" type="string"/>
+        <param name="minute_increment" value="$(arg minute_increment)" type="int"/>
+        <param name="time_window" value="$(arg time_window)" type="int"/>
+    </node>
+</launch>

@@ -1,0 +1,8 @@
+time start_time             # start interval time 
+time end_time               # end interval time 
+int32 n_best                # n best places (region id) based on their occurrence_rate 
+---
+string[] region_ids         # n best region ids
+time[] visit_times   # recommended time to visit the region. The indices of waypoints correspond to indices in region_ids
+duration[] durations         # recommended duration to stay at the region during the visit time. The indices of waypoints correspond to indices in region_ids
+string[] waypoints          # the possible nearest waypoints from the region_ids. The indices of waypoints correspond to indices in region_ids
