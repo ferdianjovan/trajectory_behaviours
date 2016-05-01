@@ -19,6 +19,8 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>visualization_msgs</build_depend>
   <build_depend>human_trajectory</build_depend>
+  <build_depend>strands_navigation_msgs</build_depend>
+  <build_depend>strands_exploration_msgs</build_depend>
   <run_depend>mongodb_store</run_depend>
   <run_depend>rospy</run_depend>
   <run_depend>soma_manager</run_depend>
@@ -27,6 +29,8 @@
   <run_depend>geometry_msgs</run_depend>
   <run_depend>visualization_msgs</run_depend>
   <run_depend>human_trajectory</run_depend>
+  <run_depend>strands_navigation_msgs</run_depend>
+  <run_depend>strands_exploration_msgs</run_depend>
 
   <export>
   </export>

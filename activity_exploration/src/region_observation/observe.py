@@ -3,7 +3,6 @@
 import time
 import rospy
 import datetime
-import argparse
 import threading
 
 from geometry_msgs.msg import Pose, Point
@@ -148,14 +147,19 @@ class OnlineRegionObservation(object):
 
 if __name__ == '__main__':
     rospy.init_node("region_observation")
-    parser = argparse.ArgumentParser(prog=rospy.get_name())
-    parser.add_argument('soma_config', help="Soma configuration")
-    parser.add_argument(
-        "-m", dest="minute_increment", default="1",
-        help="The length of each observation, default value is 1"
-    )
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(prog=rospy.get_name())
+    # parser.add_argument('soma_config', help="Soma configuration")
+    # parser.add_argument(
+    #     "-m", dest="minute_increment", default="1",
+    #     help="The length of each observation, default value is 1"
+    # )
+    # args = parser.parse_args()
 
-    ro = OnlineRegionObservation(rospy.get_name(), args.soma_config, int(args.minute_increment))
+    # ro = OnlineRegionObservation(rospy.get_name(), args.soma_config, int(args.minute_increment))
+    ro = OnlineRegionObservation(
+        rospy.get_name(),
+        rospy.get_param("~soma_config", "activity_exploration"),
+        rospy.get_param("~time_increment", 1)
+    )
     ro.observe()
     rospy.spin()

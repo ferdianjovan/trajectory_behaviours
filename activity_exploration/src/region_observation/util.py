@@ -120,3 +120,10 @@ def get_soma_info(soma_config):
             regions[region.roi_id] = create_polygon(xs, ys)
     rospy.loginfo("Total regions for this configuration are %d" % len(regions.values()))
     return regions, soma_map
+
+
+def get_largest_intersected_regions(reference_region, target_regions):
+    areas = list()
+    for region in target_regions:
+        areas.append(reference_region.intersection(region).area)
+    return target_regions[areas.index(max(areas))]

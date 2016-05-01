@@ -10,7 +10,8 @@ find_package(catkin REQUIRED COMPONENTS
   soma_map_manager
   visualization_msgs
   human_trajectory # poisson stuff
-
+  strands_navigation_msgs
+  strands_exploration_msgs
 )
 
 catkin_python_setup()
@@ -43,7 +44,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES region_observation
-  CATKIN_DEPENDS mongodb_store rospy soma_manager tf soma_map_manager geometry_msgs visualization_msgs human_trajectory
+  CATKIN_DEPENDS mongodb_store rospy soma_manager tf soma_map_manager geometry_msgs visualization_msgs human_trajectory strands_navigation_msgs strands_exploration_msgs
 #  DEPENDS system_lib
 )
 
@@ -62,12 +63,10 @@ include_directories(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 install(PROGRAMS
-  src/region_observation/observe.py
+  scripts/counting_manager.py
+  # src/region_observation/observe.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
-## Mark other files for installation (e.g. launch and bag files, etc.)
-# install(FILES
-#   # myfile1
-#   # myfile2
-#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-# )
+install(DIRECTORY launch
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)

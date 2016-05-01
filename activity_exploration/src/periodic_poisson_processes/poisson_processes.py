@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 
+import time
 import rospy
 import datetime
 from activity_exploration.msg import PoissonMsg
@@ -10,7 +11,6 @@ from mongodb_store.message_store import MessageStoreProxy
 
 class PoissonProcesses(object):
 
-    # Capped to one year data
     def __init__(self, time_window=10, minute_increment=1, coll="poisson_processes"):
         # time_window and minute_increment are in minutes
         if 60 % time_window != 0 and 60 % minute_increment != 0:
@@ -18,77 +18,76 @@ class PoissonProcesses(object):
             rospy.logwarn("Using default ones (time window = 10 minutes, increment = 1 minute)")
             time_window = 10
             minute_increment = 1
+        self._init_time = None
         self.poisson = dict()
-        self.time_window = time_window
-        self.minute_increment = minute_increment
+        self.time_window = rospy.Duration(time_window*60)
+        self.minute_increment = rospy.Duration(minute_increment*60)
         self._db = MessageStoreProxy(collection=coll)
 
     def default_lambda(self):
         return Lambda()
 
-    def update(self, init_time, count):
+    def update(self, start_time, count):
         # no end time, assuming that the count was taken within time window
         # starting from the init_time
-        start = datetime.datetime.fromtimestamp(init_time.secs)
-        end = start + datetime.timedelta(minutes=self.time_window)
-        if start.month not in self.poisson:
-            self.poisson[start.month] = dict()
-        if start.day not in self.poisson[start.month]:
-            self.poisson[start.month][start.day] = dict()
-        if start.hour not in self.poisson[start.month][start.day]:
-            self.poisson[start.month][start.day][start.hour] = dict()
-        key = "%s-%s" % (start.minute, end.minute)
-        if key not in self.poisson[start.month][start.day][start.hour]:
-            self.poisson[start.month][start.day][start.hour][key] = Lambda()
-        self.poisson[start.month][start.day][start.hour][key].update_lambda(
-            [count]
+        start_time = rospy.Time(start_time.secs)
+        end_time = start_time + self.time_window
+        if self._init_time is None:
+            self._init_time = start_time
+        key = "%s-%s" % (start_time.secs, end_time.secs)
+        if key not in self.poisson:
+            self.poisson[key] = Lambda()
+        self.poisson[key].update_lambda([count])
+        rospy.loginfo(
+            "Poisson model is updated from %d to %d" % (start_time.secs, end_time.secs)
         )
-        rospy.loginfo("Poisson model is updated from %s to %s" % (str(start), str(end)))
 
     def retrieve(self, start_time, end_time):
         """ retrieve poisson distribution from specified start_time until specified end_time
             minus time window interval.
         """
+        rospy.loginfo(
+            "Retrieving Poisson model from %d to %d" % (start_time.secs, end_time.secs)
+        )
+        if self._init_time is None:
+            rospy.logwarn("Retrieving data is not possible, no poisson model has been learnt.")
+            return
+        end_time = end_time - self.time_window
         result = dict()
-        start = datetime.datetime.fromtimestamp(start_time.secs)
-        end = datetime.datetime.fromtimestamp(end_time.secs)
-        rospy.loginfo("Retrieving Poisson model from %s to %s" % (str(start), str(end)))
-        end = end - datetime.timedelta(minutes=self.time_window)
-        while start <= end:
-            mid_end = start + datetime.timedelta(minutes=self.time_window)
-            key = "%s-%s" % (start.minute, mid_end.minute)
-            if start.month not in result:
-                result[start.month] = dict()
-            if start.day not in result[start.month]:
-                result[start.month][start.day] = dict()
-            if start.hour not in result[start.month][start.day]:
-                result[start.month][start.day][start.hour] = dict()
+        while start_time <= end_time:
+            mid_end = start_time + self.time_window
+            key = "%s-%s" % (start_time.secs, mid_end.secs)
             try:
-                result[start.month][start.day][start.hour][key] = self.poisson[start.month][start.day][start.hour][key]
+                result[key] = self.poisson[key].get_rate()
             except:
-                result[start.month][start.day][start.hour][key] = self.default_lambda()
-            start = start + datetime.timedelta(minutes=self.minute_increment)
+                result[key] = self.default_lambda().get_rate()
+            start_time = start_time + self.minute_increment
         return result
 
     def store_to_mongo(self, meta=dict()):
         rospy.loginfo("Storing all poisson data...")
-        for month, daily_poisson in self.poisson.iteritems():
-            for day, hourly_poisson in daily_poisson.iteritems():
-                for hour, minutely_poisson in hourly_poisson.iteritems():
-                    for key, lmbd in minutely_poisson.iteritems():
-                        minute, _ = key.split("-")
-                        self._store(month, day, hour, int(minute), lmbd, meta)
+        for key in self.poisson.iterkeys():
+            start_time = rospy.Time(int(key.split("-")[0]))
+            self._store(start_time, meta)
 
-    def _store(self, month, day, hour, minute, lmbd, meta):
+    def _store(self, start_time, meta):
+        if self._init_time is None:
+            rospy.logwarn("Storing data is not possible, no poisson model has been learnt.")
+            return
+
+        start = datetime.datetime.fromtimestamp(start_time.secs)
+        end_time = start_time + self.time_window
+        key = "%s-%s" % (start_time.secs, end_time.secs)
+        lmbd = self.poisson[key]
         msg = PoissonMsg(
-            month, day, hour, minute,
-            rospy.Duration(self.time_window*60),
-            lmbd.shape, lmbd.scale, lmbd.get_rate()
+            start.month, start.day, start.hour, start.minute,
+            self.time_window, lmbd.shape, lmbd.scale, lmbd.get_rate()
         )
+        meta.update({"start": self._init_time.secs,"year": start.year})
         print "Storing %s with meta %s" % (str(msg), str(meta))
         query = {
-            "month": month, "day": day, "hour": hour,
-            "minute": minute, "duration.secs": (self.time_window*60)
+            "month": start.month, "day": start.day, "hour": start.hour,
+            "minute": start.minute, "duration.secs": self.time_window.secs
         }
         if len(self._db.query(PoissonMsg._type, query, meta)) > 0:
             self._db.update(msg, message_query=query, meta_query=meta)
@@ -97,23 +96,108 @@ class PoissonProcesses(object):
 
     def retrieve_from_mongo(self, meta=dict()):
         query = {
-            "duration.secs": self.time_window*60
+            "duration.secs": self.time_window.secs
         }
         logs = self._db.query(PoissonMsg._type, query, meta)
-        logs = [log[0] for log in logs]
-        rospy.loginfo("Clearing current poisson data...")
-        self.poisson = dict()
-        for log in logs:
-            if log.month not in self.poisson:
-                self.poisson[log.month] = dict()
-            if log.day not in self.poisson[log.month]:
-                self.poisson[log.month][log.day] = dict()
-            if log.hour not in self.poisson[log.month][log.day]:
-                self.poisson[log.month][log.day][log.hour] = dict()
-            end = (log.minute + self.time_window) % 60
-            key = "%s-%s" % (log.minute, end)
-            self.poisson[log.month][log.day][log.hour][key] = self.default_lambda()
-            self.poisson[log.month][log.day][log.hour][key].scale = log.scale
-            self.poisson[log.month][log.day][log.hour][key].shape = log.shape
-            self.poisson[log.month][log.day][log.hour][key].set_rate(log.rate)
-        rospy.loginfo("New poisson data are obtained from db...")
+        if len(logs) > 0:
+            rospy.loginfo("Clearing current poisson distributions...")
+            self.poisson = dict()
+            self._init_time = rospy.Time.now()
+            for log in logs:
+                if log[1]['start'] < self._init_time.secs:
+                    self._init_time = rospy.Time(log[1]['start'])
+                start = datetime.datetime(
+                    log[1]['year'], log[0].month, log[0].day,
+                    log[0].hour, log[0].minute
+                )
+                start = rospy.Time(time.mktime(start.timetuple()))
+                end = start + self.time_window
+                key = "%s-%s" % (start.secs, end.secs)
+                self.poisson[key] = self.default_lambda()
+                self.poisson[key].scale = log[0].scale
+                self.poisson[key].shape = log[0].shape
+                self.poisson[key].set_rate(log[0].rate)
+        rospy.loginfo("%d new poisson distributions are obtained from db..." % len(logs))
+
+
+class PeriodicPoissonProcesses(PoissonProcesses):
+
+    def __init__(
+        self, time_window=10, minute_increment=1, periodic_cycle=10080,
+        coll="poisson_processes"
+    ):
+        self.periodic_cycle = periodic_cycle
+        super(PeriodicPoissonProcesses, self).__init__(time_window, minute_increment, coll)
+
+    def update(self, start_time, count):
+        real_start = start_time
+        end_time = start_time + self.time_window
+        if self._init_time is not None:
+            while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
+                start_time = start_time - (self.minute_increment * self.periodic_cycle)
+        super(PeriodicPoissonProcesses, self).update(start_time, count)
+        rospy.loginfo(
+            "Poisson model is updated from %d to %d in the real time." % (real_start.secs, end_time.secs)
+        )
+
+    def store_to_mongo(self, meta):
+        meta.update({'periodic_cycle': self.periodic_cycle})
+        super(PeriodicPoissonProcesses, self).store_to_mongo(meta)
+
+    def _store(self, start_time, meta):
+        if 'periodic_cycle' not in meta:
+            meta.update({'periodic_cycle': self.periodic_cycle})
+        if self._init_time is not None:
+            while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
+                start_time = start_time - (self.minute_increment * self.periodic_cycle)
+        super(PeriodicPoissonProcesses, self)._store(start_time, meta)
+
+    def retrieve_from_mongo(self, meta=dict()):
+        meta.update({'periodic_cycle': self.periodic_cycle})
+        super(PeriodicPoissonProcesses, self).retrieve_from_mongo(meta)
+
+    def retrieve(self, start_time, end_time):
+        rospy.loginfo(
+            "Retrieving Poisson model from %d to %d in the real time." % (
+                start_time.secs, end_time.secs
+            )
+        )
+        result = dict()
+        if self._init_time is not None:
+            inter_result = list()
+            real_start = start_time
+            real_end = end_time
+            interval = (
+                self.minute_increment * (self.periodic_cycle-1)
+            ) + self.time_window
+            while (end_time - start_time) >= interval:
+                delta_start = start_time - self._init_time
+                end_time = start_time + interval
+                inter_result.append(
+                    super(PeriodicPoissonProcesses, self).retrieve(
+                        (start_time - delta_start), (end_time - delta_start)
+                    )
+                )
+                start_time = start_time + (
+                    self.minute_increment * self.periodic_cycle
+                )
+                end_time = real_end
+            if (end_time - start_time) >= self.time_window:
+                delta_start = start_time - self._init_time
+                inter_result.append(
+                    super(PeriodicPoissonProcesses, self).retrieve(
+                        (start_time - delta_start), (end_time - delta_start)
+                    )
+                )
+            keys = list()
+            while real_start + self.time_window <= real_end:
+                mid_end = real_start + self.time_window
+                key = "%s-%s" % (real_start.secs, mid_end.secs)
+                keys.append(key)
+                real_start = real_start + self.minute_increment
+            values = list()
+            for i in inter_result:
+                for val in i.values():
+                    values.extend([val])
+            result = {key: values[ind] for ind, key in enumerate(keys)}
+        return result

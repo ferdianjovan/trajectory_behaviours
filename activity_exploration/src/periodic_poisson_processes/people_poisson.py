@@ -9,12 +9,15 @@ import datetime
 from human_trajectory.msg import Trajectories
 from region_observation.observation_proxy import RegionObservationProxy
 from region_observation.util import create_line_string, is_intersected, get_soma_info
-from periodic_poisson_processes.poisson_processes import PoissonProcesses
+from periodic_poisson_processes.poisson_processes import PeriodicPoissonProcesses
 
 
 class PoissonProcessesPeople(object):
 
-    def __init__(self, config, window=10, increment=1, coll="poisson_processes"):
+    def __init__(
+        self, config, window=10, increment=1,
+        periodic_cycle=10080, coll="poisson_processes"
+    ):
         rospy.loginfo("Initializing people counting...")
         temp = datetime.datetime.fromtimestamp(rospy.Time.now().secs)
         temp = datetime.datetime(
@@ -36,7 +39,34 @@ class PoissonProcessesPeople(object):
         rospy.loginfo("Time window is %d minute with increment %d minute" % (window, increment))
         self.time_window = window
         self.time_increment = increment
-        self.process = {roi: PoissonProcesses(window, increment) for roi in self.regions.keys()}
+        rospy.loginfo("Creating a periodic cycle every %d minutes" % periodic_cycle)
+        self.process = {
+            roi: PeriodicPoissonProcesses(window, increment, periodic_cycle) for roi in self.regions.keys()
+        }
+
+    def retrieve_from_to(self, start_time, end_time):
+        result = dict()
+        for roi, poisson in self.process.iteritems():
+            result.update(
+                {roi: poisson.retrieve(start_time, end_time)}
+            )
+        return result
+
+    def load_from_db(self):
+        for roi in self.process.keys():
+            meta = {
+                "soma_map": self.map, "soma_config": self.config,
+                "region_id": roi, "type": "people"
+            }
+            self.process[roi].retrieve_from_mongo(meta)
+
+    def store_to_db(self):
+        for roi in self.process.keys():
+            meta = {
+                "soma_map": self.map, "soma_config": self.config,
+                "region_id": roi, "type": "people"
+            }
+            self.process[roi].store_to_mongo(meta)
 
     def _pt_cb(self, msg):
         if len(msg.trajectories) == 0:
@@ -100,13 +130,12 @@ class PoissonProcessesPeople(object):
         self._acquired = False
 
     def _store(self, roi, start_time):
-        start = datetime.datetime.fromtimestamp(start_time.secs)
-        end = start + datetime.timedelta(minutes=self.time_window)
-        key = "%s-%s" % (start.minute, end.minute)
         self.process[roi]._store(
-            start.month, start.day, start.hour, start.minute,
-            self.process[roi].poisson[start.month][start.day][start.hour][key],
-            {"soma_map": self.map, "soma_config":self.config, "region_id":roi}
+            start_time,
+            {
+                "soma_map": self.map, "soma_config": self.config,
+                "region_id": roi, "type": "people"
+            }
         )
 
     def _extrapolate_count(self, duration, count):
@@ -118,7 +147,7 @@ class PoissonProcessesPeople(object):
         upper_threshold_duration = rospy.Duration(0, 0)
         while duration > upper_threshold_duration:
             upper_threshold_duration += rospy.Duration(
-                self.process.values()[0].minute_increment * 20, 0
+                self.time_increment * 20, 0
             )
 
         multiplier_estimator = 3600 / float(
@@ -140,21 +169,20 @@ if __name__ == '__main__':
         "-m", dest="minute_increment", default="1",
         help="Incremental time (in minute). Default is 1 minute."
     )
+    parser.add_argument(
+        "-p", dest="periodic_cycle", default="10080",
+        help="Incremental time (in minute). Default is one week (10080 minutes)."
+    )
     args = parser.parse_args()
 
     ppp = PoissonProcessesPeople(
-        args.soma_config, int(args.time_window), int(args.minute_increment)
+        args.soma_config, int(args.time_window), int(args.minute_increment),
+        int(args.periodic_cycle)
     )
+    ppp.load_from_db()
     ppp.continuous_update()
     rospy.spin()
-    # ppp.process["21"].retrieve_from_mongo(
-    #     {"soma_map":"bham_lg", "soma_config":"activity_exploration", "region_id":"21"}
-    # )
-    # rospy.sleep(20)
-    # ppp.process["21"].store_to_mongo(
-    #     {"soma_map":"bham_lg", "soma_config":"activity_exploration", "region_id":"21",
-    #      "test": "bisa"}
-    # )
-    # print ppp.process["21"].retrieve(
-    #     rospy.Time(1461880380), rospy.Time(1461880860)
-    # )
+    # ppp.store_to_db()
+    ppp.retrieve_from_to(
+        rospy.Time(1462108560), rospy.Time(1462108980)
+    )
