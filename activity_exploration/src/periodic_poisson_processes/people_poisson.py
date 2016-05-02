@@ -97,8 +97,8 @@ class PoissonProcessesPeople(object):
         self._start_time = self._start_time + rospy.Duration(self.time_increment*60)
         for observation in region_observations:
             rospy.loginfo(
-                "Observation in region %s was for %s duration from %d to %d." % (
-                    observation.region_id, str(observation.duration), observation.start_from.secs, observation.until.secs
+                "Observation in region %s was for %d duration from %d to %d." % (
+                    observation.region_id, observation.duration.secs, observation.start_from.secs, observation.until.secs
                 )
             )
             count = 0

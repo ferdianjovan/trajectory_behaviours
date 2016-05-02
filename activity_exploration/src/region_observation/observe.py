@@ -57,10 +57,8 @@ class OnlineRegionObservation(object):
             # get the right starting time
             start_time = rospy.Time.now()
             st = datetime.datetime.fromtimestamp(start_time.secs)
+            st = datetime.datetime(st.year, st.month, st.day, st.hour, st.minute)
             start_time = rospy.Time(time.mktime(st.timetuple()))
-            if st.second != 0:
-                rospy.sleep(0.1)
-                continue
             if st.minute % self.minute_increment != 0:
                 st = st - datetime.timedelta(
                     minutes=st.minute % self.minute_increment, seconds=st.second
@@ -104,13 +102,15 @@ class OnlineRegionObservation(object):
         # save the result
         self.save_observation(duration, start_time, end_time)
 
-    def save_observation(self, duration, start_time, end_time):
+    def save_observation(self, durations, start_time, end_time):
         end_time = end_time - rospy.Duration(0, 1)
         rospy.loginfo(
             "Save observation within %s and %s..." % (str(start_time), str(end_time))
         )
         self._msgs = list()
-        for roi, duration in duration.iteritems():
+        for roi, duration in durations.iteritems():
+            if duration > rospy.Duration(60):
+                duration = rospy.Duration(60)
             msg = RegionObservationTime(
                 self.soma_map, self.soma_config, roi,
                 start_time, end_time, duration
@@ -155,7 +155,6 @@ if __name__ == '__main__':
     # )
     # args = parser.parse_args()
 
-    # ro = OnlineRegionObservation(rospy.get_name(), args.soma_config, int(args.minute_increment))
     ro = OnlineRegionObservation(
         rospy.get_name(),
         rospy.get_param("~soma_config", "activity_exploration"),

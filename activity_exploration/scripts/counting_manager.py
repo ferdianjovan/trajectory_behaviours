@@ -40,10 +40,10 @@ class PeopleCountingManager(object):
             msg.start_time, msg.end_time
         )
         result = list()
-        for roi, poisson in rates:
+        for roi, poisson in rates.iteritems():
             total_rate = sum(poisson.values())
             result.append((total_rate, roi))
-        result = sorted(result, key=lambda i: i[0])
+        result = sorted(result, key=lambda i: i[0], reverse=True)
         total = float(sum([i[0] for i in result]))
         result = GetExplorationTasksResponse(
             map(lambda i: self.region_wps[i], [i[1] for i in result])[:3],
@@ -69,27 +69,34 @@ class PeopleCountingManager(object):
         topo_sub.unregister()
 
         for wp in self.topo_map.nodes:
-            wp_sight = robot_view_cone(wp.pose)
-            rois = list()
-            regions = list()
+            wp_sight, _ = robot_view_cone(wp.pose)
+            intersected_rois = list()
+            intersected_regions = list()
             for roi, region in regions.iteritems():
                 if is_intersected(wp_sight, region):
-                    regions.append(region)
-                    rois.append(roi)
-            if len(regions) > 1:
+                    intersected_regions.append(region)
+                    intersected_rois.append(roi)
+            if len(intersected_regions) > 1:
                 rospy.logwarn(
                     "There are two or more regions covered by the sight of the robot in %s" % wp.name
                 )
                 rospy.loginfo("Trying to get the largest intersected area between robot's sight and regions")
-                region = get_largest_intersected_regions(wp_sight, regions)
-                roi = rois[regions.index(region)]
-            elif len(regions) == 1:
-                roi = rois[0]
+                region = get_largest_intersected_regions(wp_sight, intersected_regions)
+                roi = intersected_rois[intersected_regions.index(region)]
+            elif len(intersected_regions) == 1:
+                region = intersected_regions[0]
+                roi = intersected_rois[0]
             else:
-                rospy.logwarn("No region is covered in this waypoint!")
+                rospy.logwarn("No region is covered by %s!" % wp.name)
                 continue
-            region_wps.update({roi: wp.name})
-        return region_wps
+            area = wp_sight.intersection(region).area
+            if roi in region_wps:
+                _, area1 = region_wps[roi]
+                if area > area1:
+                    region_wps.update({roi: (wp.name, area)})
+            else:
+                region_wps.update({roi: (wp.name, area)})
+        return {roi: tupleoftwo[0] for roi, tupleoftwo in region_wps.iteritems()}
 
 
 if __name__ == '__main__':

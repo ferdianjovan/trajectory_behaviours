@@ -46,6 +46,8 @@ class PoissonProcesses(object):
         """ retrieve poisson distribution from specified start_time until specified end_time
             minus time window interval.
         """
+        # convert start_time and end_time to the closest time range (in minutes)
+        start_time, end_time = self._convert_time(start_time, end_time)
         rospy.loginfo(
             "Retrieving Poisson model from %d to %d" % (start_time.secs, end_time.secs)
         )
@@ -63,6 +65,21 @@ class PoissonProcesses(object):
                 result[key] = self.default_lambda().get_rate()
             start_time = start_time + self.minute_increment
         return result
+
+    def _convert_time(self, start_time, end_time):
+        new_start = datetime.datetime.fromtimestamp(start_time.secs)
+        new_start = datetime.datetime(
+            new_start.year, new_start.month, new_start.day, new_start.hour,
+            new_start.minute
+        )
+        new_start = rospy.Time(time.mktime(new_start.timetuple()))
+        new_end = datetime.datetime.fromtimestamp(end_time.secs)
+        new_end = datetime.datetime(
+            new_end.year, new_end.month, new_end.day, new_end.hour,
+            new_end.minute
+        )
+        new_end = rospy.Time(time.mktime(new_end.timetuple()))
+        return new_start, new_end
 
     def store_to_mongo(self, meta=dict()):
         rospy.loginfo("Storing all poisson data...")
@@ -83,7 +100,7 @@ class PoissonProcesses(object):
             start.month, start.day, start.hour, start.minute,
             self.time_window, lmbd.shape, lmbd.scale, lmbd.get_rate()
         )
-        meta.update({"start": self._init_time.secs,"year": start.year})
+        meta.update({"start": self._init_time.secs, "year": start.year})
         print "Storing %s with meta %s" % (str(msg), str(meta))
         query = {
             "month": start.month, "day": start.day, "hour": start.hour,
@@ -157,6 +174,10 @@ class PeriodicPoissonProcesses(PoissonProcesses):
         super(PeriodicPoissonProcesses, self).retrieve_from_mongo(meta)
 
     def retrieve(self, start_time, end_time):
+        # convert start_time and end_time to the closest time range (in minutes)
+        start_time, end_time = super(PeriodicPoissonProcesses, self)._convert_time(
+            start_time, end_time
+        )
         rospy.loginfo(
             "Retrieving Poisson model from %d to %d in the real time." % (
                 start_time.secs, end_time.secs
