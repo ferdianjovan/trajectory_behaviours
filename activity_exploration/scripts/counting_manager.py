@@ -2,8 +2,11 @@
 
 
 import rospy
+import random
+from std_msgs.msg import String
 from strands_navigation_msgs.msg import TopologicalMap
 from region_observation.util import robot_view_cone, get_soma_info
+from periodic_poisson_processes.poisson_wrapper import PoissonWrapper
 from periodic_poisson_processes.people_poisson import PoissonProcessesPeople
 from region_observation.util import is_intersected, get_largest_intersected_regions
 from strands_exploration_msgs.srv import GetExplorationTasks, GetExplorationTasksResponse
@@ -20,6 +23,11 @@ class PeopleCountingManager(object):
             soma_config, time_window, time_increment, periodic_cycle
         )
         self.poisson_proc.load_from_db()
+        self.poisson_consent = PoissonWrapper(
+            rospy.get_param("~consent", "/skeleton_data/consent_ret"), String,
+            "data", "nothing", window=30, increment=1, periodic_cycle=1440
+        )
+        rospy.sleep(0.1)
         rospy.loginfo("Create a service %s/get_waypoints..." % name)
         self.service = rospy.Service(name+'/get_waypoints', GetExplorationTasks, self._srv_cb)
         self.topo_map = None
@@ -36,6 +44,12 @@ class PeopleCountingManager(object):
             "Got a request to find waypoints to visit between %d and %d"
             % (msg.start_time.secs, msg.end_time.secs)
         )
+        time_window = rospy.get_param("~time_window", 10)
+        if (msg.end_time - msg.start_time) < time_window:
+            rospy.logwarn(
+                "Time window between start and end time is too small, widening the time window..."
+            )
+            msg.end_time = msg.start_time + rospy.Duration(time_window*60)
         rates = self.poisson_proc.retrieve_from_to(
             msg.start_time, msg.end_time
         )
@@ -45,12 +59,32 @@ class PeopleCountingManager(object):
             result.append((total_rate, roi))
         result = sorted(result, key=lambda i: i[0], reverse=True)
         total = float(sum([i[0] for i in result]))
-        result = GetExplorationTasksResponse(
-            map(lambda i: self.region_wps[i], [i[1] for i in result])[:3],
-            map(lambda i: i/total, [i[0] for i in result])[:3]
+        try:
+            task = GetExplorationTasksResponse(
+                map(lambda i: self.region_wps[i], [i[1] for i in result])[:5],
+                map(lambda i: i/total, [i[0] for i in result])[:5]
+            )
+        except:
+            rospy.logwarn("Ups...no suggestion for waypoints is found at the moment")
+            task = GetExplorationTasksResponse(
+                map(lambda i: self.region_wps[i], [i[1] for i in result])[:5],
+                map(lambda i: i/1, [i[0] for i in result])[:5]
+            )
+        task = self._check_consent(msg, task)
+        print task
+        return task
+
+    def _check_consent(self, msg, task):
+        rates_consent = self.poisson_consent.retrieve_from_to(
+            msg.start_time, msg.end_time
         )
-        print result
-        return result
+        if sum(rates_consent.values()) > 0.7:
+            rospy.loginfo("Waypoint's order: %s" % str(task.task_definition))
+            rospy.logwarn("Consent rate shows too many rejections with this configuration...")
+            rospy.logwarn("Shuffling suggested waypoints...")
+            random.shuffle(task.task_definition)
+            rospy.loginfo("New waypoint's order: %s" % str(task.task_definition))
+        return task
 
     def _topo_map_cb(self, topo_map):
         self.topo_map = topo_map

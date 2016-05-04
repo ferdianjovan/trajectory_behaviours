@@ -30,7 +30,7 @@ class PoissonProcesses(object):
     def update(self, start_time, count):
         # no end time, assuming that the count was taken within time window
         # starting from the init_time
-        start_time = rospy.Time(start_time.secs)
+        start_time = self._convert_time(start_time)
         end_time = start_time + self.time_window
         if self._init_time is None:
             self._init_time = start_time
@@ -47,7 +47,8 @@ class PoissonProcesses(object):
             minus time window interval.
         """
         # convert start_time and end_time to the closest time range (in minutes)
-        start_time, end_time = self._convert_time(start_time, end_time)
+        start_time = self._convert_time(start_time)
+        end_time = self._convert_time(end_time)
         rospy.loginfo(
             "Retrieving Poisson model from %d to %d" % (start_time.secs, end_time.secs)
         )
@@ -66,20 +67,14 @@ class PoissonProcesses(object):
             start_time = start_time + self.minute_increment
         return result
 
-    def _convert_time(self, start_time, end_time):
+    def _convert_time(self, start_time):
         new_start = datetime.datetime.fromtimestamp(start_time.secs)
         new_start = datetime.datetime(
             new_start.year, new_start.month, new_start.day, new_start.hour,
             new_start.minute
         )
         new_start = rospy.Time(time.mktime(new_start.timetuple()))
-        new_end = datetime.datetime.fromtimestamp(end_time.secs)
-        new_end = datetime.datetime(
-            new_end.year, new_end.month, new_end.day, new_end.hour,
-            new_end.minute
-        )
-        new_end = rospy.Time(time.mktime(new_end.timetuple()))
-        return new_start, new_end
+        return new_start
 
     def store_to_mongo(self, meta=dict()):
         rospy.loginfo("Storing all poisson data...")
@@ -91,7 +86,7 @@ class PoissonProcesses(object):
         if self._init_time is None:
             rospy.logwarn("Storing data is not possible, no poisson model has been learnt.")
             return
-
+        start_time = self._convert_time(start_time)
         start = datetime.datetime.fromtimestamp(start_time.secs)
         end_time = start_time + self.time_window
         key = "%s-%s" % (start_time.secs, end_time.secs)
@@ -175,50 +170,28 @@ class PeriodicPoissonProcesses(PoissonProcesses):
 
     def retrieve(self, start_time, end_time):
         # convert start_time and end_time to the closest time range (in minutes)
-        start_time, end_time = super(PeriodicPoissonProcesses, self)._convert_time(
-            start_time, end_time
-        )
+        start_time = super(PeriodicPoissonProcesses, self)._convert_time(start_time)
+        end_time = super(PeriodicPoissonProcesses, self)._convert_time(end_time)
         rospy.loginfo(
             "Retrieving Poisson model from %d to %d in the real time." % (
                 start_time.secs, end_time.secs
             )
         )
+        real_start = start_time
         result = dict()
         if self._init_time is not None:
-            inter_result = list()
-            real_start = start_time
-            real_end = end_time
-            interval = (
-                self.minute_increment * (self.periodic_cycle-1)
-            ) + self.time_window
-            while (end_time - start_time) >= interval:
-                delta_start = start_time - self._init_time
-                end_time = start_time + interval
-                inter_result.append(
-                    super(PeriodicPoissonProcesses, self).retrieve(
-                        (start_time - delta_start), (end_time - delta_start)
-                    )
-                )
-                start_time = start_time + (
-                    self.minute_increment * self.periodic_cycle
-                )
-                end_time = real_end
-            if (end_time - start_time) >= self.time_window:
-                delta_start = start_time - self._init_time
-                inter_result.append(
-                    super(PeriodicPoissonProcesses, self).retrieve(
-                        (start_time - delta_start), (end_time - delta_start)
-                    )
-                )
-            keys = list()
-            while real_start + self.time_window <= real_end:
-                mid_end = real_start + self.time_window
-                key = "%s-%s" % (real_start.secs, mid_end.secs)
-                keys.append(key)
+            while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
+                start_time = start_time - (self.minute_increment * self.periodic_cycle)
+                end_time = end_time - (self.minute_increment * self.periodic_cycle)
+            while start_time + self.time_window <= end_time:
+                if (start_time - self._init_time).secs % (self.minute_increment * self.periodic_cycle).secs == 0:
+                    start_time = start_time - (self.minute_increment * self.periodic_cycle)
+                    end_time = end_time - (self.minute_increment * self.periodic_cycle)
+                mid_end = start_time + self.time_window
+                temp = super(PeriodicPoissonProcesses, self).retrieve(start_time, mid_end)
+                if len(temp) == 1:
+                    key = "%s-%s" % (real_start.secs, (real_start + self.time_window).secs)
+                    result.update({key: temp.values()[0]})
+                start_time = start_time + self.minute_increment
                 real_start = real_start + self.minute_increment
-            values = list()
-            for i in inter_result:
-                for val in i.values():
-                    values.extend([val])
-            result = {key: values[ind] for ind, key in enumerate(keys)}
         return result
