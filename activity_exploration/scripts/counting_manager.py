@@ -25,14 +25,16 @@ class PeopleCountingManager(object):
         self.poisson_proc.load_from_db()
         self.poisson_consent = PoissonWrapper(
             rospy.get_param("~consent", "/skeleton_data/consent_ret"), String,
-            "data", "nothing", window=30, increment=1, periodic_cycle=1440
+            # "data", "nothing", window=30, increment=1, periodic_cycle=1440
+            "data", "nothing", window=2, increment=1, periodic_cycle=3
         )
         rospy.sleep(0.1)
-        rospy.loginfo("Create a service %s/get_waypoints..." % name)
-        self.service = rospy.Service(name+'/get_waypoints', GetExplorationTasks, self._srv_cb)
         self.topo_map = None
         self.region_wps = self._get_waypoints(soma_config)
         rospy.loginfo("Region ids and their nearest waypoints: %s" % str(self.region_wps))
+        rospy.sleep(0.1)
+        rospy.loginfo("Create a service %s/get_waypoints..." % name)
+        self.service = rospy.Service(name+'/get_waypoints', GetExplorationTasks, self._srv_cb)
         rospy.sleep(0.1)
 
     def spin(self):
@@ -45,7 +47,7 @@ class PeopleCountingManager(object):
             % (msg.start_time.secs, msg.end_time.secs)
         )
         time_window = rospy.get_param("~time_window", 10)
-        if (msg.end_time - msg.start_time) < time_window:
+        if (msg.end_time - msg.start_time).secs < time_window*60:
             rospy.logwarn(
                 "Time window between start and end time is too small, widening the time window..."
             )
@@ -65,10 +67,11 @@ class PeopleCountingManager(object):
                 map(lambda i: i/total, [i[0] for i in result])[:5]
             )
         except:
+            temp = map(lambda i: self.region_wps[i], [i[1] for i in result])[:5]
             rospy.logwarn("Ups...no suggestion for waypoints is found at the moment")
             task = GetExplorationTasksResponse(
-                map(lambda i: self.region_wps[i], [i[1] for i in result])[:5],
-                map(lambda i: i/1, [i[0] for i in result])[:5]
+                temp,
+                [1/float(len(temp)) for i in range(len(temp))]
             )
         task = self._check_consent(msg, task)
         print task

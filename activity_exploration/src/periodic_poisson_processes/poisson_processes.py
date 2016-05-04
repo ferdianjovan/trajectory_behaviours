@@ -180,11 +180,18 @@ class PeriodicPoissonProcesses(PoissonProcesses):
         real_start = start_time
         result = dict()
         if self._init_time is not None:
+            if (start_time - self._init_time).secs < 0:
+                rospy.logwarn(
+                    "Requesting starting time is smaller than my init learning time"
+                )
+                rospy.logwarn("Giving default answer...")
             while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
                 start_time = start_time - (self.minute_increment * self.periodic_cycle)
                 end_time = end_time - (self.minute_increment * self.periodic_cycle)
             while start_time + self.time_window <= end_time:
-                if (start_time - self._init_time).secs % (self.minute_increment * self.periodic_cycle).secs == 0:
+                conditions = (start_time - self._init_time).secs % (self.minute_increment * self.periodic_cycle).secs == 0
+                conditions = conditions and ((start_time - self._init_time).secs != 0)
+                if conditions:
                     start_time = start_time - (self.minute_increment * self.periodic_cycle)
                     end_time = end_time - (self.minute_increment * self.periodic_cycle)
                 mid_end = start_time + self.time_window
