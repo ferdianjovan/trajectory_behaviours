@@ -24,9 +24,9 @@ class PeopleCountingManager(object):
         )
         self.poisson_proc.load_from_db()
         self.poisson_consent = PoissonWrapper(
-            rospy.get_param("~consent", "/skeleton_data/consent_ret"), String,
-            # "data", "nothing", window=30, increment=1, periodic_cycle=1440
-            "data", "nothing", window=2, increment=1, periodic_cycle=3
+            rospy.get_param("~consent_topic", "/skeleton_data/consent_ret"), String,
+            "data", "nothing", window=time_window*3, increment=time_increment,
+            periodic_cycle=periodic_cycle/7
         )
         rospy.sleep(0.1)
         self.topo_map = None
@@ -81,7 +81,7 @@ class PeopleCountingManager(object):
         rates_consent = self.poisson_consent.retrieve_from_to(
             msg.start_time, msg.end_time
         )
-        if sum(rates_consent.values()) > 0.7:
+        if sum(rates_consent.values()) > rospy.get_param("~consent_rate", 1.5):
             rospy.loginfo("Waypoint's order: %s" % str(task.task_definition))
             rospy.logwarn("Consent rate shows too many rejections with this configuration...")
             rospy.logwarn("Shuffling suggested waypoints...")
