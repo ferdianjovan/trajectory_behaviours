@@ -100,6 +100,7 @@ if __name__ == '__main__':
     sw = SyntheticWave(interval)
     if not int(sys.argv[3]):
         waves = sw.get_one_month_synthetic_wave(True)
+        # waves = sw.get_one_month_synthetic_wave(False)  # no noise
         tof = TOF("synthetic", "synthetic_config", interval, window)
         tof.load_tof()
         for i in range(4, 31+1):
@@ -116,6 +117,7 @@ if __name__ == '__main__':
     else:
         waves = sw.get_one_week_synthetic_wave(True)
         tp = TrajectoryPeriodicity("synthetic", "synthetic_config", interval, window)
+        # comment from here if just want the plot
         inp = raw_input("MSE(0) or Prediction MSE(1): ")
         if int(inp) == 0:
             rospy.loginfo("Start model selection...")
@@ -145,4 +147,6 @@ if __name__ == '__main__':
             tp.addition_technique = False
             for region in tp.regions:
                 tp.prediction_accuracy("1", waves["1"], 5, 2015)
-            # tp.plot_region_idft("1")
+        # comment until here if just want the plot
+        # uncomment the following line
+        # tp.plot_region_idft("1")

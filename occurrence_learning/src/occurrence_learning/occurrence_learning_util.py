@@ -56,13 +56,16 @@ def time_ticks(minute_interval, window_interval, periodic_type="weekly"):
         days = [i+1 for i in range(31)]
 
     printed_hours = [0, 3, 6, 9, 12, 15, 18, 21]
+    # printed_hours = [12]
     time_ticks = list()
     for j in days:
         for i in range(24 * (60/minute_interval)):
             hour = i / (60 / minute_interval)
             minute = (minute_interval * i) % 60
             if hour in printed_hours and minute == 0:
+                # if hour == 12:
                 if hour == 0:
+                    # time_ticks.append(j)
                     time_ticks.append(
                         j+"\n"+datetime.time(hour, minute).isoformat()[:-3]
                     )

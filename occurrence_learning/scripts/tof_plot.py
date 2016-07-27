@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import rospy
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -79,22 +80,23 @@ class TOFPlot(object):
         plt.errorbar(
             self.x, y, yerr=[low_err, up_err], color='b', ecolor='r',
             fmt="-o", label="Region " + region
+            # fmt="-o", label="Poisson Model"
         )
 
-        # plt.title("Occurrence Rate for Region %s" % region, fontsize=30)
+        # plt.title("Poisson Processes of the Corridor", fontsize=40)
         plt.title("Occurrence Rate for Region %s" % region)
-        # plt.xticks(self.x, self.xticks, rotation="horizontal", fontsize=30)
+        # plt.xticks(self.x, self.xticks, rotation="horizontal", fontsize=40)
         plt.xticks(self.x, self.xticks, rotation="vertical")
         plt.xlabel(
             "One Week Period with %d minutes interval and %d window time" % (
                 self.minute_interval, self.window_interval
             )
         )
-        # plt.ylabel("Occurrence rate value", fontsize=30)
+        # plt.ylabel("Arrival Rate", fontsize=40)
         plt.ylabel("Occurrence rate value")
         plt.ylim(ymin=-1)
 
-        # plt.legend(prop={'size': 30})
+        # plt.legend(prop={'size': 40})
         plt.legend()
         plt.show()
 
@@ -135,6 +137,7 @@ if __name__ == "__main__":
         print("usage: visualization map map_config minute_interval window_interval")
         sys.exit(2)
 
+    rospy.init_node("tof_plot")
     tofplot = TOFPlot(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))
     print "Available regions: %s" % str(tofplot.regions)
     region = raw_input("Chosen region (or type 'all'): ")

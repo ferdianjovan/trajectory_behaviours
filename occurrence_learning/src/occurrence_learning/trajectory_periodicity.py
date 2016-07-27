@@ -302,20 +302,36 @@ class TrajectoryPeriodicity(object):
 
         x = np.linspace(0, len(data), len(data))
         xticks = time_ticks(self.minute_interval, self.window_interval, self.periodic_type)
+        # y = map(lambda x: x / 100.0, y)
+        # y2 = map(lambda x: x / 100.0, y2)
+        # data = map(lambda x: x / 100.0, data)
         plt.plot(
-            x, y, "-o", color="red", label="Amplitude Addition Reconstruction"
+            x, y, "-o", color="red", label="Amplitude Addition Model",
+            linewidth=5
         )
         plt.plot(
-            x, y2, "-x", color="blue", label="Best Amplitude Reconstruction"
+            x, y2, "-x", color="blue", label="Best Amplitude Model",
+            linewidth=5
         )
-        plt.plot(x, data, "-", color="green", label="Original Model")
+        plt.plot(
+            x, data, "-*", color="green", label="Poisson Model",
+            linewidth=5
+        )
 
         plt.title("Reconstruction Occurrence Rate for Region %s" % region)
+        # plt.xticks(x, xticks, rotation="horizontal", fontsize=30)
         plt.xticks(x, xticks, rotation="vertical")
         plt.xlabel("One Week Period with %d minutes interval and %d window time" % (self.minute_interval, self.window_interval))
-        plt.ylabel("Occurrence rate value")
+        # plt.xticks([])
+        # plt.xticks(fontsize=30)
+        # plt.yticks([])
+        # plt.yticks(fontsize=30)
+        # plt.xlabel("Time", fontsize=40)
+        plt.ylabel("Occurrence rate")
+        # plt.ylabel("Amplitude", fontsize=40)
         plt.ylim(ymin=-5)
 
+        # plt.legend(prop={'size': 40}, loc=4)
         plt.legend()
         plt.show()
 
